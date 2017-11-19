@@ -1,9 +1,8 @@
-import cv2
+# import cv2
 import pandas as pd
 
-cap = cv2.VideoCapture("Data/20171029-201639.h264.avi")
-labels = pd.read_csv("20171029-201639.h264.csv")
-
+# cap = cv2.VideoCapture("Data/20171029-201639.h264.avi")
+labels = pd.read_csv("Data/20171029-201639.h264.csv", sep="\t")
 
 while True:
     # Capture frame-by-frame
@@ -22,3 +21,5 @@ while True:
 # When everything done, release the capture
 cap.release()
 cv2.destroyAllWindows()
+
+labels = labels[labels.index % 12 == 0]
