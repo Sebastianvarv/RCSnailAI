@@ -34,3 +34,5 @@ cv2.destroyAllWindows()
 training_images = np.asarray(training_images)
 
 print(training_images.shape)
+
+labels = labels[labels.index % 12 == 0]
