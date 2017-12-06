@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import pandas as pd
+from keras.wrappers.scikit_learn import KerasRegressor
+from sklearn.model_selection import KFold, cross_val_score
+
 
 def extract_training_data_as_stacked(filename, csv_filename, image_size=(64, 64, 3)):
     """
@@ -91,3 +94,10 @@ def extract_training_data(filename, csv_filename, image_size=(64, 64, 3)):
 
     assert training_images.shape[0] == training_labels.shape[0]
     return training_images, training_labels
+
+
+def run_kfold_cross_val(build_fn, x_train, y_train, epochs=10, batch_size=64, verbose=0, n_splits=10):
+    model = KerasRegressor(build_fn=build_fn, epochs=epochs, batch_size=batch_size, verbose=verbose)
+    kfold = KFold(n_splits=n_splits)
+
+    return cross_val_score(model, x_train, y_train, cv=kfold, scoring='explained_variance')
