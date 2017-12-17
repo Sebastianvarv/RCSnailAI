@@ -1,14 +1,24 @@
 import json
 import socket
+from PIL import Image
+from io import BytesIO
+import numpy as np
+from PIL import ImageFile
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class CarConnection(object):
     def __init__(self, machine_name='tigu6'):
         remote_ip = socket.gethostbyname(machine_name)
         send_server = (remote_ip, 22241)
+        receive_server = (remote_ip, 22242)
 
         self.send_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.send_sock.connect(send_server)
+
+        self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.recv_sock.connect(receive_server)
 
     def send_commands_to_car(self, commands):
         """
@@ -30,8 +40,20 @@ class CarConnection(object):
         self.send_sock.sendall((json_body + '\n').encode('utf-8'))
 
     def receive_data_from_stream(self):
-        pass
+        header = self.recv_sock.recv(4)
+        bytes_to_read = int.from_bytes(header, byteorder='little')
+
+        bitmap_image = self.recv_sock.recv(bytes_to_read)
+
+        img = Image.open(BytesIO(bitmap_image))
+        img_array = np.asarray(img.convert('RGB'))
+
+        img_array = np.flip(img_array, axis=2)
+        return img_array
 
     def close(self):
         self.send_sock.shutdown(socket.SHUT_WR)
         self.send_sock.close()
+
+        self.recv_sock.shutdown(socket.SHUT_WR)
+        self.recv_sock.close()
