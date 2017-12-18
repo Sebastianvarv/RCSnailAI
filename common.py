@@ -321,3 +321,4 @@ def random_file_gen(video_files, label_files, image_size=(64, 64, 3), batch_size
             yield batch_x, batch_y
             batch_x = []
             batch_y = []
+
