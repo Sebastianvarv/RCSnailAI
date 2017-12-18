@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.model_selection import KFold, cross_val_score
+from keras.utils import Sequence
+import math
+import threading
 
 
 def extract_training_data_as_stacked(filename, csv_filename, image_size=(64, 64, 3)):
@@ -149,29 +152,46 @@ def extract_training_data_in_overlapping_groups(filename, csv_filename, image_si
 def generate_multifile(video_files, label_files, image_size=(64, 64, 3), batch_size=64):
     assert len(video_files) == len(label_files), 'Length of video file list is not the same as label file list'
 
-    for i in range(len(video_files)):
-        frame_counter = 0
+    while 1:
+        batch_counter = 0
+        batch_shape = (batch_size,) + image_size
 
-        labels = pd.read_csv('Data/' + label_files[i], sep="\t")
-        cap = cv2.VideoCapture('Data/' + video_files[i])
+        output_images = np.zeros(batch_shape)
+        output_labels = np.zeros((batch_size, 3))
 
-        while True:
-            result, frame = cap.read()
-            if result and frame_counter % 12 == 0:
-                frame = frame / 255.
+        for i in range(len(video_files)):
+            frame_counter = 0
 
-                resized_frame = cv2.resize(frame, image_size[:2])
-                output = labels.loc[frame_counter].values[2:5]
-                yield (np.array(resized_frame)[np.newaxis, :], output[np.newaxis, :])
+            labels = pd.read_csv('Data/' + label_files[i], sep="\t")
+            cap = cv2.VideoCapture('Data/' + video_files[i])
 
-            if cv2.waitKey(1) & 0xFF == ord('q') or not result:
-                break
+            while True:
+                result, frame = cap.read()
+                if result and frame_counter % 12 == 0:
+                    frame = frame / 255.
 
-            frame_counter += 1
+                    resized_frame = cv2.resize(frame, image_size[:2])
 
-        # When everything done, release the capture
-        cap.release()
-        cv2.destroyAllWindows()
+                    output_images[batch_counter] = resized_frame.copy()
+                    output_labels[batch_counter] = labels.loc[frame_counter].values[2:5]
+
+                    batch_counter += 1
+
+                    if batch_counter == batch_size:
+                        yield (output_images, output_labels)
+
+                        batch_counter = 0
+                        output_images = np.zeros(batch_shape)
+                        output_labels = np.zeros((batch_size, 3))
+
+                if cv2.waitKey(1) & 0xFF == ord('q') or not result:
+                    break
+
+                frame_counter += 1
+
+            # When everything done, release the capture
+            cap.release()
+            cv2.destroyAllWindows()
 
 
 def run_kfold_cross_val(build_fn, x_train, y_train, epochs=10, batch_size=64, verbose=0, n_splits=10):
@@ -179,3 +199,101 @@ def run_kfold_cross_val(build_fn, x_train, y_train, epochs=10, batch_size=64, ve
     kfold = KFold(n_splits=n_splits)
 
     return cross_val_score(model, x_train, y_train, cv=kfold, scoring='explained_variance')
+
+
+class SnailSequence(Sequence):
+    def __init__(self, video_file, labels_file, batch_size=64, image_size=(64, 64, 3), every_nth=12):
+        self.batch_size = batch_size
+        self.image_size = image_size
+        self.video_file = video_file
+
+        df = pd.read_csv('Data/' + labels_file, sep='\t')
+        self.y = df.iloc[::every_nth, :]
+        self.x = self.y.FrameNo.values
+
+    def __len__(self):
+        return math.ceil(len(self.x) / self.batch_size)
+
+    def __getitem__(self, idx):
+        batch_x_frames = self.x[idx * self.batch_size: (idx + 1) * self.batch_size]
+        # Steering braking throttle -> 2:5, to include gear, 2:6
+        batch_y = self.y.iloc[idx * self.batch_size: (idx + 1) * self.batch_size, 2:5].values
+
+        batch_x = np.zeros((batch_y.shape[0],) + self.image_size)
+
+        # Get the frames from the video
+        for i, frame_no in enumerate(batch_x_frames):
+            cap = cv2.VideoCapture('Data/' + self.video_file)
+            cap.set(1, frame_no)
+            result, frame = cap.read()
+
+            frame = frame / 255.
+            resized_frame = cv2.resize(frame, self.image_size[:2])
+            batch_x[i] = resized_frame.copy()
+
+            cap.release()
+            cv2.destroyAllWindows()
+
+        return batch_x, batch_y
+
+
+class MultifileGenerator:
+    def __init__(self, video_files, label_files, image_size=(64, 64, 3), batch_size=64):
+        assert len(video_files) == len(label_files), 'Length of video file list is not the same as label file list'
+        self.video_files = video_files
+        self.label_files = label_files
+        self.image_size = image_size
+        self.batch_size = batch_size
+
+        self.lock = threading.Lock()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        with self.lock:
+            while 1:
+                batch_counter = 0
+                batch_shape = (self.batch_size,) + self.image_size
+
+                output_images = np.zeros(batch_shape)
+                output_labels = np.zeros((self.batch_size, 3))
+
+                for i in range(len(self.video_files)):
+                    frame_counter = 0
+
+                    labels = pd.read_csv('Data/' + self.label_files[i], sep="\t")
+                    cap = cv2.VideoCapture('Data/' + self.video_files[i])
+
+                    while True:
+                        result, frame = cap.read()
+                        if result and frame_counter % 12 == 0:
+                            frame = frame / 255.
+
+                            resized_frame = cv2.resize(frame, self.image_size[:2])
+
+                            output_images[batch_counter] = resized_frame.copy()
+                            output_labels[batch_counter] = labels.loc[frame_counter].values[2:5]
+
+                            batch_counter += 1
+
+                            if batch_counter == self.batch_size:
+                                yield (output_images, output_labels)
+
+                                batch_counter = 0
+                                output_images = np.zeros(batch_shape)
+                                output_labels = np.zeros((self.batch_size, 3))
+
+                        if cv2.waitKey(1) & 0xFF == ord('q') or not result:
+                            break
+
+                        frame_counter += 1
+
+                    # When everything done, release the capture
+                    cap.release()
+                    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    asd = SnailSequence('20171211-183607508.h264', '20171211-183607508.csv', 64)
+    asd.__getitem__(0)
