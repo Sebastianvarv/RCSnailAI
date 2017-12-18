@@ -214,6 +214,9 @@ class SnailSequence(Sequence):
     def __len__(self):
         return math.ceil(len(self.x) / self.batch_size)
 
+    def on_epoch_end(self):
+        pass
+
     def __getitem__(self, idx):
         batch_x_frames = self.x[idx * self.batch_size: (idx + 1) * self.batch_size]
         # Steering braking throttle -> 2:5, to include gear, 2:6
@@ -237,63 +240,84 @@ class SnailSequence(Sequence):
         return batch_x, batch_y
 
 
-class MultifileGenerator:
-    def __init__(self, video_files, label_files, image_size=(64, 64, 3), batch_size=64):
-        assert len(video_files) == len(label_files), 'Length of video file list is not the same as label file list'
-        self.video_files = video_files
-        self.label_files = label_files
-        self.image_size = image_size
-        self.batch_size = batch_size
+def get_partial_batch_stacked(video, label_file, image_size):
+    cap = cv2.VideoCapture('Data/' + video)
+    labels = pd.read_csv('Data/' + label_file, sep='\t')
 
-        self.lock = threading.Lock()
+    frame_counter = 0
+    processed_frames = []
 
-    def __iter__(self):
-        return self
+    while True:
+        result, frame = cap.read()
 
-    def __next__(self):
-        with self.lock:
-            while 1:
-                batch_counter = 0
-                batch_shape = (self.batch_size,) + self.image_size
+        if cv2.waitKey(1) & 0xFF == ord('q') or not result:
+            break
 
-                output_images = np.zeros(batch_shape)
-                output_labels = np.zeros((self.batch_size, 3))
+        if result and frame_counter % 12 == 0:
+            resized_frame = cv2.resize(frame, image_size[:2])
+            resized_frame = resized_frame / 255.
 
-                for i in range(len(self.video_files)):
-                    frame_counter = 0
+            processed_frames.append(resized_frame)
 
-                    labels = pd.read_csv('Data/' + self.label_files[i], sep="\t")
-                    cap = cv2.VideoCapture('Data/' + self.video_files[i])
+            if len(processed_frames) >= 4:
+                stacked_image = np.concatenate(processed_frames, axis=2)
+                yield stacked_image, labels.iloc[frame_counter].values[2:6]
 
-                    while True:
-                        result, frame = cap.read()
-                        if result and frame_counter % 12 == 0:
-                            frame = frame / 255.
+                processed_frames.pop(0)
 
-                            resized_frame = cv2.resize(frame, self.image_size[:2])
+        frame_counter += 1
 
-                            output_images[batch_counter] = resized_frame.copy()
-                            output_labels[batch_counter] = labels.loc[frame_counter].values[2:5]
-
-                            batch_counter += 1
-
-                            if batch_counter == self.batch_size:
-                                yield (output_images, output_labels)
-
-                                batch_counter = 0
-                                output_images = np.zeros(batch_shape)
-                                output_labels = np.zeros((self.batch_size, 3))
-
-                        if cv2.waitKey(1) & 0xFF == ord('q') or not result:
-                            break
-
-                        frame_counter += 1
-
-                    # When everything done, release the capture
-                    cap.release()
-                    cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
-    asd = SnailSequence('20171211-183607508.h264', '20171211-183607508.csv', 64)
-    asd.__getitem__(0)
+def generate_multifile_conc(video_files, label_files, image_size=(64, 64, 3), batch_size=64, nr_batches=10000):
+    assert len(video_files) == len(label_files), 'Length of video file list is not the same as label file list'
+
+    entries_per_cap = batch_size // len(video_files)
+
+    while 1:
+        for _ in range(nr_batches):
+            batch_x = []
+            batch_y = []
+
+            generators = []
+            for i in range(len(video_files)):
+                generators.append(get_partial_batch_stacked(video_files[i], label_files[i], image_size))
+
+            for i in range(len(generators)):
+                for _ in range(entries_per_cap):
+                    try:
+                        x, y = next(generators[i])
+                    except StopIteration:
+                        generators[i] = get_partial_batch_stacked(video_files[i], label_files[i], image_size)
+                        x, y = next(generators[i])
+
+                    batch_x.append(x)
+                    batch_y.append(y)
+
+            yield np.array(batch_x), np.array(batch_y)
+
+            batch_x = []
+            batch_y = []
+
+
+def random_file_gen(video_files, label_files, image_size=(64, 64, 3), batch_size=64):
+    assert len(video_files) == len(label_files), 'Length of video file list is not the same as label file list'
+    while 1:
+        file_nr = np.random.randint(len(video_files) + 1)
+        batch_x = []
+        batch_y = []
+
+        while True:
+            while len(batch_x) < batch_size:
+                try:
+                    x, y = next(get_partial_batch_stacked(video_files[file_nr], label_files[file_nr], image_size))
+                    batch_x.append(x)
+                    batch_y.append(y)
+                except StopIteration:
+                    pass
+
+            yield batch_x, batch_y
+            batch_x = []
+            batch_y = []
