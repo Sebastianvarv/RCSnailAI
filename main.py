@@ -1,8 +1,9 @@
 import numpy as np
+import cv2
 from car_interfacing import CarConnection
 from keras.models import load_model
 
-model = load_model('conv_dense_gear_bigdata.h5')
+model = load_model('conv_dense_from_gen.h5')
 connection = CarConnection()
 
 frame_counter = 0
@@ -12,8 +13,11 @@ while True:
     try:
         frame_counter += 1
 
-        # Connect to car and retreive rescaled frame
+        # Connect to car and retrieve rescaled frame
         frame = connection.receive_data_from_stream()
+
+        cv2.imshow("img", frame)
+        cv2.waitKey(1)
 
         if frame is not None:
             # Normalizing frame
@@ -35,7 +39,7 @@ while True:
                 pred_list[1] = pred_list[1] if pred_list[1] >= 0.5 else 0.0
 
                 # Normalize throttle to be always an effective input (0.3 or so minimum)
-                pred_list[2] = 0.2 + np.clip(pred_list[2], 0, 1) * 0.7
+                pred_list[2] = 0.4 + np.clip(pred_list[2], 0, 1) * 0.6
 
                 # Round gear to closest integer
                 pred_list[3] = 2 if pred_list[3] >= 1.4 else 1
