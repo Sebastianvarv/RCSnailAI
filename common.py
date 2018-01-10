@@ -241,8 +241,8 @@ class SnailSequence(Sequence):
 
 
 def get_partial_batch_stacked(video, label_file, image_size):
-    cap = cv2.VideoCapture('Data/' + video)
-    labels = pd.read_csv('Data/' + label_file, sep='\t')
+    cap = cv2.VideoCapture('Data/Preprocessed/' + video)
+    labels = pd.read_csv('Data/Preprocessed/' + label_file, sep='\t')
 
     frame_counter = 0
     processed_frames = []
@@ -261,7 +261,7 @@ def get_partial_batch_stacked(video, label_file, image_size):
 
             if len(processed_frames) >= 4:
                 stacked_image = np.concatenate(processed_frames, axis=2)
-                yield stacked_image, labels.iloc[frame_counter].values[2:6]
+                yield stacked_image, labels.iloc[frame_counter].values[1:5]
 
                 processed_frames.pop(0)
 
