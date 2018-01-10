@@ -162,8 +162,8 @@ def generate_multifile(video_files, label_files, image_size=(64, 64, 3), batch_s
         for i in range(len(video_files)):
             frame_counter = 0
 
-            labels = pd.read_csv('Data/' + label_files[i], sep="\t")
-            cap = cv2.VideoCapture('Data/' + video_files[i])
+            labels = pd.read_csv('Data/Preprocessed/' + label_files[i], sep="\t")
+            cap = cv2.VideoCapture('Data/Preprocessed/' + video_files[i])
 
             while True:
                 result, frame = cap.read()
