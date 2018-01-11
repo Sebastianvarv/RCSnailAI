@@ -19,20 +19,24 @@ class CarConnection(object):
         self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.recv_sock.connect(receive_server)
 
-    def send_commands_to_car(self, commands):
+    def send_commands_to_car(self, commands, steering_only=False):
         """
         Method to send the movement commands to the relevant RCSnail car
         :param commands: a list of commands, in order steering (double), braking (double), throttle (double), gear (int)
         :return:
         """
-        assert len(commands) == 4, 'The input array must have all 4 parameters'
+        if steering_only:
+            data = {'steering': commands[0]}
 
-        data = {
-            'steering': commands[0],
-            'braking': commands[1],
-            'throttle': commands[2],
-            'gear': commands[3]
-        }
+        else:
+            assert len(commands) == 4, 'The input array must have all 4 parameters'
+
+            data = {
+                'steering': commands[0],
+                'braking': commands[1],
+                'throttle': commands[2],
+                'gear': commands[3]
+            }
 
         json_body = json.dumps(data)
         self.send_sock.sendall((json_body + '\n').encode('utf-8'))

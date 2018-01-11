@@ -7,8 +7,9 @@ from time import time
 
 # oka mudel: conv_dense_gear_bigdata
 
-model = load_model('.\Models\conv_dense_gear_bigdata.h5')
-connection = CarConnection(machine_name="tigu1")
+# conv_speshul_data_000001regL2_05dropout_LR
+model = load_model(".\Models\conv_dense_gear_bigdata.h5")
+connection = CarConnection(machine_name="tigu6")
 
 frame_counter = 0
 processed_frames = []
@@ -53,23 +54,20 @@ while True:
                 pred_list[1] = pred_list[1] if pred_list[1] >= 0.6 else 0.0
 
                 # Normalize throttle to be always an effective input (0.3 or so minimum)
-                #pred_list[2] = np.clip(pred_list[2], 0.0, 1.0)
-                pred_list[2] = 0.3 + 0.4 * (1 - np.exp(-2.5 * np.clip(pred_list[2], 0.0, 1.0)))
+                # pred_list[2] = np.clip(pred_list[2], 0.0, 1.0)
+                pred_list[2] = 0.2 + 0.6 * (1 - np.exp(-2.5 * np.clip(pred_list[2], 0.0, 1.0)))
 
                 # Round gear to forward or backward gear
-                if pred_list[3] >= 1.3:
-                    pred_list[3] = 2
-                elif pred_list[3] < 0.4:
-                    pred_list[3] = 0
+                pred_list[3] = 2 if pred_list[3] >= 1.3 else 1
 
                 for pred in pred_list:
                     print(str(round(Decimal(pred), 2)) + "\t", end="")
 
-                connection.send_commands_to_car(pred_list)
+                connection.send_commands_to_car(pred_list, steering_only=False)
                 print("\n----------- time: " + str(time() - start))
 
         # Some breaking condition to kill me here
-        if frame_counter >= 15000:
+        if frame_counter >= 25000:
             break
 
     except KeyboardInterrupt:
