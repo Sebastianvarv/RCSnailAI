@@ -1,9 +1,8 @@
 import json
 import socket
-from PIL import Image
+from PIL import Image, ImageFile
 from io import BytesIO
 import numpy as np
-from PIL import ImageFile
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -17,8 +16,9 @@ class CarConnection(object):
         self.send_sock.connect(send_server)
 
         # Temp removed until fixes are made
-        #self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #self.recv_sock.connect(receive_server)
+        self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #self.recv_sock.settimeout(0.2)
+        self.recv_sock.connect(receive_server)
 
     def send_commands_to_car(self, commands):
         """
@@ -36,33 +36,39 @@ class CarConnection(object):
         }
 
         json_body = json.dumps(data)
-
         self.send_sock.sendall((json_body + '\n').encode('utf-8'))
 
-
     def receive_data_from_stream(self):
-        self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.recv_sock.connect((socket.gethostbyname('tigu6'), 22242))
+        # Temporarily open it every time it asks due to issues
+        #self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #self.recv_sock.connect((socket.gethostbyname('tigu6'), 22242))
 
         header = self.recv_sock.recv(4)
         bytes_to_read = int.from_bytes(header, byteorder='little')
-        bitmap_image = self.recv_sock.recv(bytes_to_read)
 
+        buf = bytearray(bytes_to_read)
+        view = memoryview(buf)
+
+        while bytes_to_read:
+            nbytes = self.recv_sock.recv_into(view, bytes_to_read)
+            view = view[nbytes:]
+            bytes_to_read -= nbytes
+
+        bitmap_image = buf
         img = Image.open(BytesIO(bitmap_image))
         img_array = np.asarray(img.convert('RGB'))
 
         img_array = np.flip(img_array, axis=2)
         # Temporarily shut it down every time it asks due to issues
-        self.recv_sock.shutdown(socket.SHUT_WR)
-        self.recv_sock.close()
+        #self.recv_sock.shutdown(socket.SHUT_WR)
+        #self.recv_sock.close()
 
         return img_array
-
 
     def close(self):
         self.send_sock.shutdown(socket.SHUT_WR)
         self.send_sock.close()
 
         # Temp removed because it's closed every time it opens
-        #self.recv_sock.shutdown(socket.SHUT_WR)
-        #self.recv_sock.close()
+        self.recv_sock.shutdown(socket.SHUT_WR)
+        self.recv_sock.close()

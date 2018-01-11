@@ -2,8 +2,9 @@ import numpy as np
 import cv2
 from car_interfacing import CarConnection
 from keras.models import load_model
+from decimal import *
 
-model = load_model('conv_dense_from_gen.h5')
+model = load_model('.\Models\conv_slim.h5')
 connection = CarConnection()
 
 frame_counter = 0
@@ -36,13 +37,23 @@ while True:
                 # pred_list[0] = pred_list[0] if pred_list[0] >= -0.5 else (pred_list[0]/abs(pred_list[0])) * 0.5
 
                 # Eliminate braking element if it's too small
-                pred_list[1] = pred_list[1] if pred_list[1] >= 0.5 else 0.0
+                pred_list[1] = pred_list[1] if pred_list[1] >= 0.6 else 0.0
 
                 # Normalize throttle to be always an effective input (0.3 or so minimum)
-                pred_list[2] = 0.4 + np.clip(pred_list[2], 0, 1) * 0.6
+                # pred_list[2] = np.clip(pred_list[2], 0.0, 1.0)
+                pred_list[2] = 0.2 + 0.6 * (1 - np.exp(-2.5 * np.clip(pred_list[2], 0.0, 1.0)))
 
                 # Round gear to closest integer
-                pred_list[3] = 2 if pred_list[3] >= 1.4 else 1
+                if pred_list[3] >= 1.4:
+                    pred_list[3] = 2
+                elif pred_list[3] <= 0.3:
+                    pred_list[3] = 0
+                else:
+                    pred_list[3] = 1
+
+                for pred in pred_list:
+                    print(str(round(Decimal(pred), 2)) + "\t", end="")
+                print("\n---------------------------")
 
                 connection.send_commands_to_car(pred_list)
 
